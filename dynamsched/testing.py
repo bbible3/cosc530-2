@@ -8,7 +8,7 @@ from tracer import Tracer
 if __name__ == "__main__":
     log = Log()
     config = Config(log=log)
-    config.print()
+    #config.print()
     #log.print()
 
     instruction_types = DefaultInstructionTypes.default_instruction_types()
@@ -22,3 +22,8 @@ if __name__ == "__main__":
 
     print("About to simulate")
     sim = Sim(config=config, trace=tracer, instruction_types=instruction_types, log=log)
+    
+    sim.simulate()
+    sim.simulate()
+    sim.simulate() 
+    log.print()

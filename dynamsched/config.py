@@ -12,6 +12,8 @@ class Config:
         self.buffers_ints = None
         self.buffers_reorder = None
 
+        self.latencies_flw = 1
+    
         self.latencies_fp_add = None
         self.latencies_fp_sub = None
         self.latencies_fp_mul = None
