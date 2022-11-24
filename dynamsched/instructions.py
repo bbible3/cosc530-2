@@ -16,7 +16,9 @@ class Instruction:
         self.in_mem_at = None
         self.in_writeback_buffer_at = None
         self.in_reorder_buffer_at = None
-        
+        self.last_execute_attempt = None
+
+        self.wrote_at = None
     def print(self):
         print(f"[{self.instruction_type.instruction_class}] {self.instruction_type.name} {self.params}")
     def tostr(self):

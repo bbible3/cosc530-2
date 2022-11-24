@@ -22,9 +22,10 @@ class Sim():
         self.reorder_buffer = []
         self.mem_read_buffer = []
         self.write_result_buffer = []
-
+        self.mem_waiting = []
         self.memlocs = {}
 
+        self.last_committed_issue_cycle = None
         #print("About to check configs...")
         #Before we simulate, make sure we have values from config
         if self.config is None:
@@ -97,18 +98,36 @@ class Sim():
 
     def simulate(self):
         print("Starting simulation...")
-
+        self.log.add(LogType.SIM_ENTER_CYCLE, f"Starting cycle {self.cycle}")
         #Check buffers for things to execute, or in case we need to stall
         self.docycle_checkbuffers()
         self.docycle_issue()
+        self.docycle_retryexecute()
         self.docycle_finishexecute()
+        self.docycle_membuffer()
+        self.docycle_writeback()
         self.docycle_commit()
+        self.cycle += 1
 
        
 
     def docycle_commit(self):
-        #Todo: implement other types of instructions, in-order commits, error checking, etc
-        pass
+        if self.last_committed_issue_cycle is None:
+            self.last_committed_issue_cycle = 0
+
+        for inst in self.reorder_buffer:
+            if inst.wrote_at == self.cycle:
+                continue
+            
+            issued_at = inst.issued
+            if issued_at < self.last_committed_issue_cycle:
+                self.log.add(LogType.SIM_OUTOFORDER_COMMIT_STALL, f"Instruction {inst.instruction_type.name} cannot commit on cycle {self.cycle} because it was issued at cycle {issued_at} and the last committed instruction was issued at cycle {self.last_committed_issue_cycle}")
+                continue
+            elif issued_at > self.last_committed_issue_cycle:
+                self.log.add(LogType.SIM_COMMIT_SUCCESS, f"Instruction {inst.instruction_type.name} committed on cycle {self.cycle}")
+                self.last_committed_issue_cycle = issued_at
+                self.reorder_buffer.remove(inst)
+                return True
 
     def docycle_writeback(self):
         for instruction in self.write_result_buffer:
@@ -127,13 +146,15 @@ class Sim():
                 instruction.in_reorder_buffer = True
                 instruction.in_reorder_buffer_at = self.cycle+1
 
+                instruction.wrote_at = self.cycle
+
                 self.reorder_buffer.append(instruction)
     def docycle_membuffer(self):
         for instruction in self.mem_read_buffer:
             #Need to implement checking to ensure there is not already a read in progress
             if 1==1:
                 if instruction.in_mem_at == self.cycle:
-                    self.log.add(LogType.MEM_READ, f"Instruction in mem buffer started reading at cycle {self.cycle}, should finish at {instruction.in_mem_at} ~~~ {instruction.tostr()}")
+                    self.log.add(LogType.SIM_MEM_READ, f"Instruction in mem buffer started reading at cycle {self.cycle}, should finish at {instruction.in_mem_at} ~~~ {instruction.tostr()}")
                     #Need to error check here to ensure that we do not move two instructions to write result stage at the same time. Implement later
                     if 1==1:
                         instruction.in_writeback_buffer_at = self.cycle + 1
@@ -142,6 +163,8 @@ class Sim():
                         instruction.in_writeback_buffer = True
                         self.write_result_buffer.append(instruction)
                         self.log.add(LogType.SIM_MOVE_TO_WRITERESULTBUF, f"Instruction in mem buffer moved to write result buffer at cycle {self.cycle} ~~~ {instruction.tostr()}")
+                else:
+                    self.log.add(LogType.SIM_MEM_READ_MISMATCH, f"Instruction in mem buffer did not start reading at {self.cycle}, expected {instruction.in_mem_at} ~~~ {instruction.tostr()}")
 
 
 
@@ -168,6 +191,27 @@ class Sim():
                 instruction.finished_at = self.cycle + (self.config.latencies_flw-1)
                 #generalise log here
                 self.log.add(LogType.FLW_START_EXECUTE, f"Instruction in eff addr buffer started executing at cycle {self.cycle}, should finish at {instruction.finished_at} ~~~ {instruction.tostr()}")
+        
+    def docycle_retryexecute(self):
+        for inst in self.mem_waiting:
+            if inst.last_execute_attempt == self.cycle:
+                continue
+
+            self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION, f"Retrying execution of instruction at cycle {self.cycle} ~~~ {inst.tostr()}")
+            using = False
+            for memloc in inst.memlocs:
+                if memloc.using is True:
+                    using = True
+                    
+            if using is True:
+                    self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_NO_MEM, f"Instruction cannot be executed at cycle {self.cycle} ~~~ {inst.tostr()}")
+                    continue
+            else:
+                self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_MEM, f"Instruction can be executed at cycle {self.cycle} ~~~ {inst.tostr()}")
+                #Move the instruction to the eff addr buffer
+                #We probably should put execution entirely in its own function
+
+
 
     def docycle_issue(self):
         
@@ -195,6 +239,8 @@ class Sim():
                 for memloc in inst.memlocs:
                     if memloc.using is True:
                         self.log.add(LogType.SIM_ISSUE_INSTRUCTION, f"Hazard: Memloc {memloc.identifier} is not available")
+                        inst.last_execute_attempt = self.cycle
+                        self.mem_waiting.append(inst)
                         #The memory location is not available, so we can't issue this instruction
                         break
                 else:
@@ -218,7 +264,5 @@ class Sim():
                             raise Exception(f"Could not add to effective address buffer")
 
                 #Add the instruction to the reorder buffer
-                self.reorder_buffer.append(inst)
                 self.instruction_queue_index += 1
-                self.cycle += 1
                 return True

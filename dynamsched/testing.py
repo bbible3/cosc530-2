@@ -26,4 +26,7 @@ if __name__ == "__main__":
     sim.simulate()
     sim.simulate()
     sim.simulate() 
+    sim.simulate()
+    sim.simulate()
+    sim.simulate()
     log.print()
