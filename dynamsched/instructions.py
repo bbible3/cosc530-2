@@ -19,6 +19,9 @@ class Instruction:
         self.last_execute_attempt = None
 
         self.wrote_at = None
+        self.committed_at = None
+
+        self.instr_id = None
     def print(self):
         print(f"[{self.instruction_type.instruction_class}] {self.instruction_type.name} {self.params}")
     def tostr(self):

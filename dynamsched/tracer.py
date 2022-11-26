@@ -63,6 +63,7 @@ class Tracer:
                             self.log.add(LogType.TRACE_COMMAND_PARAM_EXTRACT, f"Extracted parameters. Command {command_text} has {len(command_params)} parameters")
                         #Create an Instruction to add to the queue
                         new_instruction = Instruction(command_type, command_params)
+                        new_instruction.instr_id = len(self.instruction_queue)
                         self.instruction_queue.append(new_instruction)
                         if self.log is not None:
                             self.log.add(LogType.TRACE_COMMAND_QUEUE_ADD, f"Added instruction {command_text} to queue")
