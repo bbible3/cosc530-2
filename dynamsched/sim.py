@@ -221,6 +221,15 @@ class Sim():
                 continue
             else:
                 self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_MEM, f"Instruction can be executed at cycle {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
+                latency = -999
+                if inst.instruction_type == self.instruction_types.find(name="fmul.s"):
+                    latency = self.config.latencies_fp_mul
+                elif inst.instruction_type == self.instruction_types.find(name="flw"):
+                    latency = self.config.latencies_flw
+                inst.finished_at = self.cycle + (latency-1)
+                inst.executing = True
+                self.append_eff_addr_buffer(inst)
+                self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_MEM, f"Instruction added to eff buffer at {self.cycle}, should finish at {inst.finished_at} ~~~ {inst.tostr()}", assoc_instr=inst)
                 #Move the instruction to the eff addr buffer
                 #We probably should put execution entirely in its own function
 
@@ -279,6 +288,18 @@ class Sim():
                         for memloc in inst.memlocs:
                             memloc.using = True
                             memloc.usedby = inst
+                    
+                    elif inst.instruction_type.name == "fmul.s":
+                        self.log.add(LogType.SIM_APPEND_EFF_ADDR_BUFFER, f"Attempting to add to effective address buffer")
+                        #Add to the effective address buffer
+                        append_res = self.append_eff_addr_buffer(inst)
+                        if append_res is True:
+                            self.log.add(LogType.SIM_APPEND_EFF_ADDR_BUFFER, f"Added to effective address buffer")
+                            inst.execute_at = self.cycle + 1
+                        else:
+                            #We should implement code to ensure that we are not loading or storing in this cycle
+                            raise Exception(f"Could not add to effective address buffer")
+
 
                 #Add the instruction to the reorder buffer
                 self.instruction_queue_index += 1
