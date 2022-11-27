@@ -62,6 +62,7 @@ class Sim():
                 if param in self.memlocs:
                     memloc = self.memlocs[param]
                 else:
+                    #print(f"Creating new memloc for {param}")
                     memloc = Memloc(param)
                     self.memlocs[param] = memloc
                 memloc.future_usedby.append(inst)
@@ -94,6 +95,9 @@ class Sim():
             return True
         else:
             return False
+
+    def get_memloc(self, identifier):
+        return self.memlocs[identifier]
 
 
     def simulate(self):
@@ -139,9 +143,12 @@ class Sim():
                 
                 #We can free up the memlocs used by this instruction
                 for memloc in instruction.memlocs:
+                    memloc = self.get_memloc(memloc.identifier)
                     self.log.add(LogType.SIM_FREE_MEMLOC, f"Freeing memloc {memloc.identifier} at cycle {self.cycle}", assoc_instr=instruction)
                     memloc.used_by = None
                     memloc.using = False
+                    self.log.add(LogType.SIM_FREE_MEMLOC, f"Freed memloc {memloc.identifier} (now {memloc.using}) at cycle {self.cycle}", assoc_instr=instruction)
+
 
                 #Add to reorder buffer
                 instruction.in_reorder_buffer = True
@@ -201,12 +208,17 @@ class Sim():
             self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION, f"Retrying execution of instruction at cycle {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
             using = False
             for memloc in inst.memlocs:
+                memloc = self.get_memloc(memloc.identifier)
                 if memloc.using is True:
                     using = True
+                    self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_NO_MEM, f"memloc.using is True for {memloc.identifier}:{memloc.using} {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
+
                     
             if using is True:
-                    self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_NO_MEM, f"Instruction cannot be executed at cycle {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
-                    continue
+                self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_NO_MEM, f"Instruction cannot be executed at cycle {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
+                self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_NO_MEM, f"\t{[x.used_by for x in inst.memlocs]} ~~~ {inst.tostr()}", assoc_instr=inst)
+
+                continue
             else:
                 self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_MEM, f"Instruction can be executed at cycle {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
                 #Move the instruction to the eff addr buffer
@@ -238,6 +250,7 @@ class Sim():
 
                 #Is the memory location used by this instruction avaialble?
                 for memloc in inst.memlocs:
+                    memloc = self.get_memloc(memloc.identifier)
                     if memloc.using is True:
                         self.log.add(LogType.SIM_ISSUE_INSTRUCTION, f"Hazard: Memloc {memloc.identifier} is not available", assoc_instr=inst)
                         inst.last_execute_attempt = self.cycle
@@ -246,11 +259,8 @@ class Sim():
                         break
                 else:
                     #The memory location is available, so we can issue this instruction
-                    self.log.add(LogType.SIM_READY_TO_EXECUTE, f"Memloc is available, so we can execute on the next cycle")
-                    #Mark the memory location as unavailable
-                    for memloc in inst.memlocs:
-                        memloc.using = True
-                        memloc.usedby = inst
+                    self.log.add(LogType.SIM_READY_TO_EXECUTE, f"Memloc is available, so we can execute on the next cycle", assoc_instr=inst)
+ 
                     
                     #A load instruction will need to be issued to the eff addr buffer
                     if inst.instruction_type.name == "flw":
@@ -263,6 +273,12 @@ class Sim():
                         else:
                             #We should implement code to ensure that we are not loading or storing in this cycle
                             raise Exception(f"Could not add to effective address buffer")
+
+                        #Mark the memory location as unavailable
+                        #flw and fsw memory is handled here, so it is in the conditional
+                        for memloc in inst.memlocs:
+                            memloc.using = True
+                            memloc.usedby = inst
 
                 #Add the instruction to the reorder buffer
                 self.instruction_queue_index += 1

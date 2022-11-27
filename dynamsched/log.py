@@ -48,6 +48,10 @@ class Log:
         for item in self.items:
             if item.instr_id == instr_id:
                 item.print()
+    def print_type(self, log_type: LogType):
+        for item in self.items:
+            if item.log_type == log_type:
+                item.print()
     def count_instr(self):
         n = 0
         encountered_instr_ids = []
