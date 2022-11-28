@@ -11,7 +11,7 @@ if __name__ == "__main__":
     #config.print()
     #log.print()
 
-    instruction_types = DefaultInstructionTypes.default_instruction_types()
+    instruction_types = DefaultInstructionTypes.default_instruction_types(config=config)
     #instruction_types.print()
 
     tracer = Tracer("trace.dat", log=log, instruction_types=instruction_types)

@@ -127,6 +127,8 @@ class Log:
             memory_read_int = ""
             if instr.in_mem_at is not None:
                 memory_read_int = str(instr.in_mem_at) if instr.in_mem_at != -1 else ""
+            if instr.instruction_type.uses_memory == False:
+                memory_read_int = ""
             issued_str = str(instr.issued_at) if instr.issued_at is not None else "?"
             execute_start_str = str(instr.execute_at) if instr.execute_at is not None else "?"
             execute_end_str = str(instr.finished_at) if instr.finished_at is not None else "?"

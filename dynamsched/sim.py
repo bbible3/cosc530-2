@@ -148,16 +148,27 @@ class Sim():
             self.log.add(LogType.SIM_CHECK_EXECUTE,
                          f"(Cycle {self.cycle}) Checking instruction {instr.tostr()} for execution", assoc_instr=instr)
             for memloc in instr.memlocs:
-                usedby_notme = [x for x in memloc.used_by if x !=
-                                instr] if memloc.used_by is not None else []
+                usedby_notme = []
+                for usedby in memloc.used_by:
+                    if usedby != instr:
+                        usedby_notme.append(usedby)
                 if len(usedby_notme) > 0:
                     self.log.add(
                         LogType.SIM_CHECK_EXECUTE, f"\tMemloc {memloc.identifier} is used by {len(usedby_notme)} other instructions. Cannot execute yet.", assoc_instr=instr)
+                    is_mem_good = False
+                    instr.execute_at += 1
+                if memloc.data_available == False:
+                    self.log.add(
+                        LogType.SIM_CHECK_EXECUTE, f"\tMemloc {memloc.identifier} has no data available. Cannot execute yet.", assoc_instr=instr)
+                    is_mem_good = False
+                    instr.execute_at += 1
 
             # All memlocs are good to go
             if is_mem_good == True:
+
                 instr.executing = True
-                instr.finished_at = self.cycle + instr.instruction_type.latency - 1
+                if instr.finished_at is None:
+                    instr.finished_at = self.cycle + instr.instruction_type.latency - 1
 
                 if instr.instruction_type.uses_memory == True:
                     self.read_write_this_cycle = instr
@@ -174,21 +185,25 @@ class Sim():
                     if instr.instruction_type.uses_memory == True:
                         self.read_write_this_cycle = False
                     self.log.add(LogType.SIM_FINISH_EXECUTE,
-                                 f"(Cycle {self.cycle}) Finished Executing instruction {instr.tostr()}")
-                    for memloc in instr.memlocs:
-                        memloc.executing = False
-                        memloc.used_by = []
+                                 f"(Cycle {self.cycle}) Finished Executing instruction {instr.tostr()}", assoc_instr=instr)
+                    # for memloc in instr.memlocs:
+                    #     memloc.executing = False
+                    #     memloc.used_by = []
                     instr.executing = False
                     self.execute_buffer.remove(instr)
                     if instr.instruction_type.uses_memory == True:
                         self.mem_read_buffer.append(instr)
+                    else:
+                        instr.in_mem_at = self.cycle
+                        instr.wrote_at = self.cycle+1
+                        self.write_result_buffer.append(instr)
     
     def memread(self):
         if len(self.mem_read_buffer) > 0:
             instr = self.mem_read_buffer[0]
             if instr.finished_at == self.cycle-1:
                 self.log.add(LogType.SIM_MEM_READ,
-                             f"(Cycle {self.cycle}) Reading memory for instruction {instr.tostr()}")
+                             f"(Cycle {self.cycle}) Reading memory for instruction {instr.tostr()}", assoc_instr=instr)
                 self.mem_read_buffer.remove(instr)
                 instr.in_mem_at = self.cycle
                 self.write_result_buffer.append(instr)
@@ -198,10 +213,15 @@ class Sim():
             instr = self.write_result_buffer[0]
             if instr.in_mem_at == self.cycle-1:
                 self.log.add(LogType.SIM_WRITE_RESULT,
-                             f"(Cycle {self.cycle}) Writing result for instruction {instr.tostr()}")
+                             f"(Cycle {self.cycle}) Writing result for instruction {instr.tostr()}", assoc_instr=instr)
                 self.write_result_buffer.remove(instr)
                 self.reorder_buffer.append(instr)
                 instr.wrote_at = self.cycle
+                for memloc in instr.memlocs:
+                    self.log.add(LogType.SIM_FREE_MEMLOC, f"\tFreeing memloc {memloc.identifier}", assoc_instr=instr)
+                    memloc.used_by = []
+                    memloc.executing = False
+                    memloc.data_available = True
                 
     def commit(self):
         if len(self.reorder_buffer) > 0:
