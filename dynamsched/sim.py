@@ -103,6 +103,7 @@ class Sim():
     def simulate(self):
         print("Starting simulation...")
         self.log.add(LogType.SIM_ENTER_CYCLE, f"Starting cycle {self.cycle}")
+        self.log.add(LogType.SIM_ENTER_CYCLE, f"Currently waiting on {len(self.mem_waiting)} memory instructions {[x.tostr() for x in self.mem_waiting]}")
         #Check buffers for things to execute, or in case we need to stall
         self.docycle_checkbuffers()
         self.docycle_issue()
@@ -119,15 +120,20 @@ class Sim():
         if self.last_committed_issue_cycle is None:
             self.last_committed_issue_cycle = 0
 
+        #Sort the reorder buffer by the issue cycle
+        print(f"Reorder buffer: {self.reorder_buffer}")
         for inst in self.reorder_buffer:
             if inst.wrote_at == self.cycle:
                 continue
             
             issued_at = inst.issued
-            if issued_at < self.last_committed_issue_cycle:
+            if self.cycle < self.last_committed_issue_cycle:
+                self.log.add(LogType.SIM_COMMIT_TOO_EARLY, f"Committing instruction {inst.tostr()} too early. Last committed instruction was issued at cycle {self.last_committed_issue_cycle}, but this instruction was issued at cycle {issued_at}")
+                continue
+            if issued_at <= self.last_committed_issue_cycle:
                 self.log.add(LogType.SIM_OUTOFORDER_COMMIT_STALL, f"Instruction {inst.instruction_type.name} cannot commit on cycle {self.cycle} because it was issued at cycle {issued_at} and the last committed instruction was issued at cycle {self.last_committed_issue_cycle}", assoc_instr=inst)
                 continue
-            elif issued_at > self.last_committed_issue_cycle:
+            else:
                 self.log.add(LogType.SIM_COMMIT_SUCCESS, f"Instruction {inst.instruction_type.name} committed on cycle {self.cycle}", assoc_instr=inst)
                 self.last_committed_issue_cycle = issued_at
                 self.reorder_buffer.remove(inst)
@@ -161,6 +167,20 @@ class Sim():
         for instruction in self.mem_read_buffer:
             #Need to implement checking to ensure there is not already a read in progress
             if 1==1:
+                #Instructions like float and int arithmetic do not use memory, so we skip them and put them in the write result buffer
+                if instruction.instruction_type.uses_memory is False:
+                    self.log.add(LogType.SIM_DOES_NOT_USE_MEM, f"Instruction {instruction.instruction_type.name} does not use mem cycle, but is in the mem read buffer. Removing from buffer.", assoc_instr=instruction)
+                    self.mem_read_buffer.remove(instruction)
+                    instruction.in_mem_at = -1
+                    instruction.in_mem_read_buffer = False
+                    self.write_result_buffer.append(instruction)
+
+                    #Note that self.cycle is used, not self.cycle+1, because the instruction is just skipping the mem buffer
+                    instruction.in_writeback_buffer_at = self.cycle + 1
+                    instruction.in_writeback_buffer = True
+                    #Add to write result buffer
+                    self.log.add(LogType.SIM_MOVE_TO_WRITERESULTBUF, f"Instruction in mem buffer moved to write result buffer at cycle {self.cycle} ~~~ {instruction.tostr()}", assoc_instr=instruction)
+                    continue
                 if instruction.in_mem_at == self.cycle:
                     self.log.add(LogType.SIM_MEM_READ, f"Instruction in mem buffer started reading at cycle {self.cycle}, should finish at {instruction.in_mem_at} ~~~ {instruction.tostr()}", assoc_instr=instruction)
                     #Need to error check here to ensure that we do not move two instructions to write result stage at the same time. Implement later
@@ -183,7 +203,6 @@ class Sim():
                 instruction.in_mem_buffer = True
                 self.log.add(LogType.FLW_FINISH_EXECUTE, f"Instruction in eff addr buffer finished executing at cycle {self.cycle} ~~~ {instruction.tostr()}", assoc_instr=instruction)
                 self.eff_addr_buffer.remove(instruction)
-
                 #Need to do error checking here to ensure that we do not move two instructions to memory stage at the same time
                 if 1==1:
                     instruction.in_mem_at = self.cycle+1
@@ -202,8 +221,11 @@ class Sim():
         
     def docycle_retryexecute(self):
         for inst in self.mem_waiting:
+
             if inst.last_execute_attempt == self.cycle:
                 continue
+
+            self.mem_waiting.remove(inst)
 
             self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION, f"Retrying execution of instruction at cycle {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
             using = False
@@ -217,15 +239,25 @@ class Sim():
             if using is True:
                 self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_NO_MEM, f"Instruction cannot be executed at cycle {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
                 self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_NO_MEM, f"\t{[x.used_by for x in inst.memlocs]} ~~~ {inst.tostr()}", assoc_instr=inst)
-
+                #Add to mem waiting again
+                inst.last_execute_attempt = self.cycle
+                self.mem_waiting.append(inst)
                 continue
             else:
+                if inst.executing is True:
+                    self.log.add(LogType.SIM_ALREADY_EXECUTING, f"Instruction is already executing at cycle {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
+                    continue
+                
+                
                 self.log.add(LogType.SIM_RETRY_EXECUTE_INSTRUCTION_MEM, f"Instruction can be executed at cycle {self.cycle} ~~~ {inst.tostr()}", assoc_instr=inst)
                 latency = -999
                 if inst.instruction_type == self.instruction_types.find(name="fmul.s"):
                     latency = self.config.latencies_fp_mul
                 elif inst.instruction_type == self.instruction_types.find(name="flw"):
                     latency = self.config.latencies_flw
+                elif inst.instruction_type == self.instruction_types.find(name="fsub.s"):
+                    latency = self.config.latencies_fp_sub
+                inst.execute_at = self.cycle
                 inst.finished_at = self.cycle + (latency-1)
                 inst.executing = True
                 self.append_eff_addr_buffer(inst)
@@ -290,6 +322,17 @@ class Sim():
                             memloc.usedby = inst
                     
                     elif inst.instruction_type.name == "fmul.s":
+                        self.log.add(LogType.SIM_APPEND_EFF_ADDR_BUFFER, f"Attempting to add to effective address buffer")
+                        #Add to the effective address buffer
+                        append_res = self.append_eff_addr_buffer(inst)
+                        if append_res is True:
+                            self.log.add(LogType.SIM_APPEND_EFF_ADDR_BUFFER, f"Added to effective address buffer")
+                            inst.execute_at = self.cycle + 1
+                        else:
+                            #We should implement code to ensure that we are not loading or storing in this cycle
+                            raise Exception(f"Could not add to effective address buffer")
+
+                    elif inst.instruction_type.name == "fsub.s":
                         self.log.add(LogType.SIM_APPEND_EFF_ADDR_BUFFER, f"Attempting to add to effective address buffer")
                         #Add to the effective address buffer
                         append_res = self.append_eff_addr_buffer(inst)

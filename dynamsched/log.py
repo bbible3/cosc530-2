@@ -24,6 +24,9 @@ class LogType(str, Enum):
     SIM_RETRY_EXECUTE_INSTRUCTION_MEM = "SIM_RETRY_EXECUTE_INSTRUCTION_MEM"
     SIM_OUTOFORDER_COMMIT_STALL = "SIM_OUTOFORDER_COMMIT_STALL"
     SIM_COMMIT_SUCCESS = "SIM_COMMIT_SUCCESS"
+    SIM_ALREADY_EXECUTING = "SIM_ALREADY_EXECUTING"
+    SIM_DOES_NOT_USE_MEM = "SIM_DOES_NOT_USE_MEM"
+    SIM_COMMIT_TOO_EARLY = "SIM_COMMIT_TOO_EARLY"
 class LogItem:
     def __init__(self, log_type: LogType, message: str):
         self.log_type = log_type
@@ -48,9 +51,9 @@ class Log:
         for item in self.items:
             if item.instr_id == instr_id:
                 item.print()
-    def print_type(self, log_type: LogType):
+    def print_type(self, *log_type: LogType):
         for item in self.items:
-            if item.log_type == log_type:
+            if item.log_type in log_type:
                 item.print()
     def count_instr(self):
         n = 0
@@ -113,10 +116,13 @@ class Log:
             
             instr = self.get_instr_by_id(instr_id)
             
+            memory_read_int = ""
+            if instr.in_mem_at is not None:
+                memory_read_int = str(instr.in_mem_at) if instr.in_mem_at != -1 else ""
             issued_str = str(instr.issued) if instr.issued is not None else "?"
             execute_start_str = str(instr.execute_at) if instr.execute_at is not None else "?"
             execute_end_str = str(instr.finished_at) if instr.finished_at is not None else "?"
-            memory_read_str = str(instr.in_mem_at) if instr.in_mem_at is not None else "?"
+            memory_read_str = str(memory_read_int) if memory_read_int is not None else "?"
             writes_result_str = str(instr.wrote_at) if instr.wrote_at is not None else "?"
             commits_str = str(instr.committed_at) if instr.committed_at is not None else "?"
 
