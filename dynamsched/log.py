@@ -27,6 +27,8 @@ class LogType(str, Enum):
     SIM_ALREADY_EXECUTING = "SIM_ALREADY_EXECUTING"
     SIM_DOES_NOT_USE_MEM = "SIM_DOES_NOT_USE_MEM"
     SIM_COMMIT_TOO_EARLY = "SIM_COMMIT_TOO_EARLY"
+    SIM_LAST_EXECUTE_ATTEMPT_ERROR = "SIM_LAST_EXECUTE_ATTEMPT_ERROR"
+    SIM_APPEND_RETRY_FIRST = "SIM_APPEND_RETRY_FIRST"
 class LogItem:
     def __init__(self, log_type: LogType, message: str):
         self.log_type = log_type
