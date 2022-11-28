@@ -11,6 +11,11 @@ class LogType(str, Enum):
     SIM_READY_TO_EXECUTE = "SIM_READY_TO_EXECUTE"
     SIM_APPEND_EFF_ADDR_BUFFER = "SIM_APPEND_EFF_ADDR_BUFFER"
     SIM_ENTER_CYCLE = "SIM_ENTER_CYCLE"
+    SIM_CHECK_EXECUTE = "SIM_CHECK_EXECUTE"
+    SIM_START_EXECUTE = "SIM_START_EXECUTE"
+    SIM_CONTINUE_EXECUTE = "SIM_CONTINUE_EXECUTE"
+    SIM_DELAY_EXECUTE = "SIM_DELAY_EXECUTE"
+    SIM_FINISH_EXECUTE = "SIM_FINISH_EXECUTE"
     FLW_START_EXECUTE = "FLW_START_EXECUTE"
     FLW_FINISH_EXECUTE = "FLW_FINISH_EXECUTE"
     SIM_MOVE_TO_MEMBUF = "FLW_MOVE_TO_MEMBUF"
@@ -29,6 +34,7 @@ class LogType(str, Enum):
     SIM_COMMIT_TOO_EARLY = "SIM_COMMIT_TOO_EARLY"
     SIM_LAST_EXECUTE_ATTEMPT_ERROR = "SIM_LAST_EXECUTE_ATTEMPT_ERROR"
     SIM_APPEND_RETRY_FIRST = "SIM_APPEND_RETRY_FIRST"
+    SIM_CHECK_COMMIT = "SIM_CHECK_COMMIT"
 class LogItem:
     def __init__(self, log_type: LogType, message: str):
         self.log_type = log_type
@@ -121,7 +127,7 @@ class Log:
             memory_read_int = ""
             if instr.in_mem_at is not None:
                 memory_read_int = str(instr.in_mem_at) if instr.in_mem_at != -1 else ""
-            issued_str = str(instr.issued) if instr.issued is not None else "?"
+            issued_str = str(instr.issued_at) if instr.issued_at is not None else "?"
             execute_start_str = str(instr.execute_at) if instr.execute_at is not None else "?"
             execute_end_str = str(instr.finished_at) if instr.finished_at is not None else "?"
             memory_read_str = str(memory_read_int) if memory_read_int is not None else "?"

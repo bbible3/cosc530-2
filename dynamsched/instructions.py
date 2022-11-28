@@ -5,7 +5,7 @@ class Instruction:
         self.params = params
         self.memlocs = []
         
-        self.issued = None
+        self.issued_at = None
         self.executing = False
         self.in_mem_buffer = False
         self.in_writeback_buffer = False
